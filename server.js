@@ -107,7 +107,7 @@ function createGameWallet() {
   gameState.lotteryWalletAddress = lotteryWallet.publicKey.toString();
   gameState.gamePhase = 'waiting';
   
-  console.log('=== NEW SMART CONTRACT WALLET CREATED ===');
+  console.log('=== NEW GAME WALLET CREATED ===');
   console.log('Address:', gameState.lotteryWalletAddress);
   console.log('Phase: Waiting for first bet');
   
@@ -141,38 +141,86 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
   if (!connection || !gameState.lotteryWallet) return false;
 
   try {
+    console.log('Verifying transaction:', signature, 'Amount:', expectedAmount, 'Sender:', senderPublicKey);
+    
     const transaction = await connection.getTransaction(signature, {
       commitment: 'confirmed'
     });
 
+    console.log('Transaction fetched:', !!transaction);
+    
     if (!transaction || !transaction.meta || transaction.meta.err) {
+      console.error('Transaction not found, has no meta, or has error');
       return false;
     }
 
-    // Verify sender and receiver
+    // Verify transaction structure
     const accounts = transaction.transaction.message.accountKeys;
-    const instruction = transaction.transaction.message.instructions[0];
+    const instructions = transaction.transaction.message.instructions;
     
-    const sender = accounts[instruction.accounts[0]];
-    const receiver = accounts[instruction.accounts[1]];
+    if (!accounts || accounts.length === 0 || !instructions || instructions.length === 0) {
+      console.error('Invalid transaction structure');
+      return false;
+    }
+    
+    const instruction = instructions[0];
+    if (!instruction.accounts || instruction.accounts.length < 2) {
+      console.error('Invalid instruction structure');
+      return false;
+    }
+    
+    const senderIndex = instruction.accounts[0];
+    const receiverIndex = instruction.accounts[1];
+    
+    if (senderIndex >= accounts.length || receiverIndex >= accounts.length) {
+      console.error('Invalid account indices');
+      return false;
+    }
+    
+    const sender = accounts[senderIndex];
+    const receiver = accounts[receiverIndex];
+
+    if (!sender || !receiver) {
+      console.error('Sender or receiver account is undefined');
+      return false;
+    }
+
+    console.log('Sender:', sender.toString(), 'Expected:', senderPublicKey);
+    console.log('Receiver:', receiver.toString(), 'Expected:', gameState.lotteryWalletAddress);
 
     if (sender.toString() !== senderPublicKey) {
+      console.error('Sender mismatch');
       return false;
     }
 
     if (receiver.toString() !== gameState.lotteryWalletAddress) {
+      console.error('Receiver mismatch');
       return false;
     }
 
     // Verify amount
-    const transferredAmount = transaction.meta.preBalances[1] - transaction.meta.postBalances[1];
+    if (!transaction.meta.preBalances || !transaction.meta.postBalances) {
+      console.error('Missing balance information');
+      return false;
+    }
+    
+    if (transaction.meta.preBalances.length <= receiverIndex || transaction.meta.postBalances.length <= receiverIndex) {
+      console.error('Balance arrays too short for receiver index');
+      return false;
+    }
+    
+    const transferredAmount = transaction.meta.preBalances[receiverIndex] - transaction.meta.postBalances[receiverIndex];
     const transferredSOL = transferredAmount / LAMPORTS_PER_SOL;
+    
+    console.log('Transferred amount:', transferredSOL, 'Expected:', expectedAmount);
     
     const tolerance = 0.001;
     if (Math.abs(transferredSOL - expectedAmount) > tolerance) {
+      console.error(`Amount mismatch: expected ${expectedAmount}, got ${transferredSOL}`);
       return false;
     }
 
+    console.log('Transaction verification successful');
     return true;
   } catch (error) {
     console.error('Error verifying transaction:', error);
@@ -263,7 +311,7 @@ function startGameTimer() {
   
   console.log('=== GAME TIMER STARTED ===');
   console.log('Duration: 60 seconds');
-  console.log('Smart contract wallet:', gameState.lotteryWalletAddress);
+  console.log('Game wallet:', gameState.lotteryWalletAddress);
   
   gameTimer = setInterval(() => {
     const elapsed = Date.now() - gameState.gameStartTime;
@@ -313,14 +361,14 @@ async function selectWinnerAndPayout() {
   console.log('=== ROUND ENDED ===');
   console.log('Winner selected:', winner.publicKey);
   console.log('Total pot:', gameState.totalPot, 'SOL');
-  console.log('Closing smart contract wallet:', gameState.lotteryWalletAddress);
+  console.log('Closing lottery wallet:', gameState.lotteryWalletAddress);
   
   // Transfer funds to winner
   try {
     const payoutSignature = await transferToWinnerWithFees(winner.publicKey);
     if (payoutSignature) {
       gameState.winnerPayoutSignature = payoutSignature;
-      console.log('Payout completed. Smart contract wallet is now empty and closed.');
+      console.log('Payout completed. Wallet is now empty and closed.');
     }
   } catch (error) {
     console.error('Error processing winner payout:', error);
@@ -345,11 +393,11 @@ async function selectWinnerAndPayout() {
     }
   });
   
-  // Automatically create new smart contract wallet after 15 seconds
+  // Automatically create new game wallet after 15 seconds
   setTimeout(() => {
-    console.log('=== CREATING NEW SMART CONTRACT WALLET ===');
+    console.log('=== CREATING NEW GAME WALLET ===');
     resetGame();
-  }, 15000); // 15 seconds
+  }, 15000); // Changed to 15 seconds
 }
 
 // Reset game
@@ -380,13 +428,27 @@ function resetGame() {
   
   // Create new smart contract wallet
   createGameWallet();
+  
+  broadcast({
+    type: 'gameUpdate',
+    gameState: {
+      lotteryWallet: gameState.lotteryWalletAddress,
+      participants: gameState.participants,
+      totalPot: gameState.totalPot,
+      timeRemaining: gameState.timeRemaining,
+      isActive: gameState.isActive,
+      winner: gameState.winner,
+      winnerPayoutSignature: gameState.winnerPayoutSignature,
+      gamePhase: gameState.gamePhase
+    }
+  });
 }
 
 // Handle WebSocket connections
 wss.on('connection', (ws) => {
   console.log('New client connected');
   
-  // Ensure smart contract wallet exists for new connections
+  // Ensure lottery wallet exists
   ensureGameWallet();
   
   // Send current game state to new client
@@ -459,8 +521,8 @@ wss.on('connection', (ws) => {
             // Start timer if this is the first participant
             if (gameState.participants.length === 1) {
               console.log('=== ROUND STARTED ===');
-              console.log('First bet placed on smart contract wallet');
-              console.log('Starting 60-second timer');
+              console.log('First bet placed, starting 60-second timer');
+              console.log('Lottery wallet:', gameState.lotteryWalletAddress);
               startGameTimer();
             }
           }
@@ -515,8 +577,6 @@ server.listen(PORT, () => {
   console.log(`WebSocket server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   
-  // Create initial smart contract wallet
-  console.log('=== SOLANA LOTTERY SERVER STARTED ===');
-  console.log('Creating initial smart contract wallet...');
+  // Create initial lottery wallet
   ensureGameWallet();
 });
