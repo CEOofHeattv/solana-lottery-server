@@ -1,54 +1,20 @@
-{\rtf1\ansi\ansicpg1252\cocoartf2759
-\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
-{\colortbl;\red255\green255\blue255;}
-{\*\expandedcolortbl;;}
-\margl1440\margr1440\vieww11520\viewh8400\viewkind0
-\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
-
-\f0\fs24 \cf0 \{\
-  "name": "vite-react-typescript-starter",\
-  "private": true,\
-  "version": "0.0.0",\
-  "type": "module",\
-  "scripts": \{\
-    "dev": "vite",\
-    "dev:full": "concurrently \\"node server.js\\" \\"vite\\"",\
-    "dev:server": "node server.js",\
-    "start": "node server.js",\
-    "build": "vite build",\
-    "lint": "eslint .",\
-    "preview": "vite preview"\
-  \},\
-  "dependencies": \{\
-    "@solana/wallet-adapter-base": "^0.9.27",\
-    "@solana/wallet-adapter-phantom": "^0.9.28",\
-    "@solana/wallet-adapter-react": "^0.15.39",\
-    "@solana/wallet-adapter-react-ui": "^0.9.39",\
-    "@solana/wallet-adapter-wallets": "^0.19.37",\
-    "@solana/web3.js": "^1.98.4",\
-    "bs58": "^6.0.0",\
-    "cors": "^2.8.5",\
-    "lucide-react": "^0.344.0",\
-    "react": "^18.3.1",\
-    "react-dom": "^18.3.1",\
-    "socket.io-client": "^4.8.1",\
-    "ws": "^8.18.3"\
-  \},\
-  "devDependencies": \{\
-    "@eslint/js": "^9.9.1",\
-    "@types/react": "^18.3.5",\
-    "@types/react-dom": "^18.3.0",\
-    "@vitejs/plugin-react": "^4.3.1",\
-    "autoprefixer": "^10.4.18",\
-    "eslint": "^9.9.1",\
-    "eslint-plugin-react-hooks": "^5.1.0-rc.0",\
-    "eslint-plugin-react-refresh": "^0.4.11",\
-    "globals": "^15.9.0",\
-    "postcss": "^8.4.35",\
-    "tailwindcss": "^3.4.1",\
-    "typescript": "^5.5.3",\
-    "typescript-eslint": "^8.3.0",\
-    "vite": "^5.4.2"\
-  \}\
-\}\
+{
+  "name": "solana-lottery-server",
+  "version": "1.0.0",
+  "description": "WebSocket server for Solana Lottery multiplayer game",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.3",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["websocket", "solana", "lottery", "multiplayer"],
+  "author": "Your Name",
+  "license": "MIT"
 }
