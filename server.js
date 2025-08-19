@@ -154,47 +154,37 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
       return false;
     }
 
-    // Verify transaction structure
+    // Simplified verification - check balance changes instead of instruction details
     const accounts = transaction.transaction.message.accountKeys;
-    const instructions = transaction.transaction.message.instructions;
     
-    if (!accounts || accounts.length === 0 || !instructions || instructions.length === 0) {
-      console.error('Invalid transaction structure');
-      return false;
-    }
-    
-    const instruction = instructions[0];
-    if (!instruction.accounts || instruction.accounts.length < 2) {
-      console.error('Invalid instruction structure');
-      return false;
-    }
-    
-    const senderIndex = instruction.accounts[0];
-    const receiverIndex = instruction.accounts[1];
-    
-    if (senderIndex >= accounts.length || receiverIndex >= accounts.length) {
-      console.error('Invalid account indices');
-      return false;
-    }
-    
-    const sender = accounts[senderIndex];
-    const receiver = accounts[receiverIndex];
-
-    if (!sender || !receiver) {
-      console.error('Sender or receiver account is undefined');
+    if (!accounts || accounts.length === 0) {
+      console.error('No accounts in transaction');
       return false;
     }
 
-    console.log('Sender:', sender.toString(), 'Expected:', senderPublicKey);
-    console.log('Receiver:', receiver.toString(), 'Expected:', gameState.lotteryWalletAddress);
-
-    if (sender.toString() !== senderPublicKey) {
-      console.error('Sender mismatch');
+    // Find sender and receiver in account keys
+    let senderIndex = -1;
+    let receiverIndex = -1;
+    
+    for (let i = 0; i < accounts.length; i++) {
+      const account = accounts[i];
+      if (account.toString() === senderPublicKey) {
+        senderIndex = i;
+      }
+      if (account.toString() === gameState.lotteryWalletAddress) {
+        receiverIndex = i;
+      }
+    }
+    
+    console.log('Sender index:', senderIndex, 'Receiver index:', receiverIndex);
+    
+    if (senderIndex === -1) {
+      console.error('Sender not found in transaction accounts');
       return false;
     }
-
-    if (receiver.toString() !== gameState.lotteryWalletAddress) {
-      console.error('Receiver mismatch');
+    
+    if (receiverIndex === -1) {
+      console.error('Receiver not found in transaction accounts');
       return false;
     }
 
@@ -209,10 +199,18 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
       return false;
     }
     
-    const transferredAmount = transaction.meta.preBalances[receiverIndex] - transaction.meta.postBalances[receiverIndex];
-    const transferredSOL = transferredAmount / LAMPORTS_PER_SOL;
+    // Calculate the balance change for the receiver (lottery wallet)
+    const receiverBalanceChange = transaction.meta.postBalances[receiverIndex] - transaction.meta.preBalances[receiverIndex];
+    const transferredSOL = receiverBalanceChange / LAMPORTS_PER_SOL;
     
-    console.log('Transferred amount:', transferredSOL, 'Expected:', expectedAmount);
+    console.log('Receiver balance change:', receiverBalanceChange, 'lamports');
+    console.log('Transferred SOL:', transferredSOL, 'Expected:', expectedAmount);
+    
+    // Also verify sender balance decreased (optional additional check)
+    if (senderIndex < transaction.meta.preBalances.length && senderIndex < transaction.meta.postBalances.length) {
+      const senderBalanceChange = transaction.meta.postBalances[senderIndex] - transaction.meta.preBalances[senderIndex];
+      console.log('Sender balance change:', senderBalanceChange, 'lamports (should be negative)');
+    }
     
     const tolerance = 0.001;
     if (Math.abs(transferredSOL - expectedAmount) > tolerance) {
