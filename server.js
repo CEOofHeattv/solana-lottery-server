@@ -228,8 +228,9 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
       });
     }
     console.log('=== END TRANSACTION DEBUG ===');
+    
     // Handle different transaction message formats
-    let accounts, instruction;
+    let accounts, transferInstruction;
     
     if (transaction.transaction.message.accountKeys) {
       // Legacy format
@@ -249,7 +250,6 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
     }
 
     // Handle multiple instructions - look for the transfer instruction
-    let transferInstruction = null;
     let transferInstructionIndex = -1;
     
     if (transaction.transaction.message.instructions) {
