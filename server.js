@@ -308,14 +308,13 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
     }
     
     console.log('Found transfer instruction at index:', transferInstructionIndex);
-    const instruction = transferInstruction;
 
     // Get program ID - handle both formats
     let programId;
-    if (instruction.programId) {
-      programId = instruction.programId.toString();
-    } else if (instruction.programIdIndex !== undefined) {
-      programId = accounts[instruction.programIdIndex].toString();
+    if (transferInstruction.programId) {
+      programId = transferInstruction.programId.toString();
+    } else if (transferInstruction.programIdIndex !== undefined) {
+      programId = accounts[transferInstruction.programIdIndex].toString();
     } else {
       console.log('Cannot determine program ID');
       return false;
@@ -330,21 +329,21 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
 
     // Get sender and receiver accounts - handle both formats
     let sender, receiver;
-    if (instruction.accounts) {
+    if (transferInstruction.accounts) {
       // Legacy format
-      sender = accounts[instruction.accounts[0]];
-      receiver = accounts[instruction.accounts[1]];
-    } else if (instruction.accountKeyIndexes) {
+      sender = accounts[transferInstruction.accounts[0]];
+      receiver = accounts[transferInstruction.accounts[1]];
+    } else if (transferInstruction.accountKeyIndexes) {
       // Versioned format
-      sender = accounts[instruction.accountKeyIndexes[0]];
-      receiver = accounts[instruction.accountKeyIndexes[1]];
-    } else if (instruction.accounts !== undefined) {
+      sender = accounts[transferInstruction.accountKeyIndexes[0]];
+      receiver = accounts[transferInstruction.accountKeyIndexes[1]];
+    } else if (transferInstruction.accounts !== undefined) {
       // Handle array of account indices
-      sender = accounts[instruction.accounts[0]];
-      receiver = accounts[instruction.accounts[1]];
+      sender = accounts[transferInstruction.accounts[0]];
+      receiver = accounts[transferInstruction.accounts[1]];
     } else {
       console.log('Cannot determine sender/receiver accounts');
-      console.log('Instruction properties:', Object.keys(instruction));
+      console.log('Instruction properties:', Object.keys(transferInstruction));
       return false;
     }
 
