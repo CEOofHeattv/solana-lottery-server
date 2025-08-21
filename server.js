@@ -293,10 +293,10 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
           continue;
         }
         
-        console.log(`Legacy instruction ${i}: Checking if ${programId} === 11111111111111111111111111111112`);
-        console.log(`Legacy instruction ${i}: Match result:`, programId === '11111111111111111111111111111112');
+        console.log(`Legacy instruction ${i}: Checking if ${programId} === 11111111111111111111111111111111`);
+        console.log(`Legacy instruction ${i}: Match result:`, programId === '11111111111111111111111111111111');
         
-        if (programId === '11111111111111111111111111111112') {
+        if (programId === '11111111111111111111111111111111') {
           transferInstruction = inst;
           transferInstructionIndex = i;
           break;
@@ -313,10 +313,10 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
         
         const programId = accounts[inst.programIdIndex].toString();
         console.log(`Compiled instruction ${i}: programIdIndex ${inst.programIdIndex} = ${programId}`);
-        console.log(`Compiled instruction ${i}: Checking if ${programId} === 11111111111111111111111111111112`);
-        console.log(`Compiled instruction ${i}: Match result:`, programId === '11111111111111111111111111111112');
+        console.log(`Compiled instruction ${i}: Checking if ${programId} === 11111111111111111111111111111111`);
+        console.log(`Compiled instruction ${i}: Match result:`, programId === '11111111111111111111111111111111');
         
-        if (programId === '11111111111111111111111111111112') {
+        if (programId === '11111111111111111111111111111111') {
           transferInstruction = inst;
           transferInstructionIndex = i;
           break;
