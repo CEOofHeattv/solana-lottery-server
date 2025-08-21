@@ -270,6 +270,12 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
     // Find the system program transfer instruction
     let transferInstructionIndex = -1;
     
+    console.log('=== INSTRUCTION ANALYSIS ===');
+    console.log('Transaction has instructions:', !!transaction.transaction.message.instructions);
+    console.log('Transaction has compiledInstructions:', !!transaction.transaction.message.compiledInstructions);
+    console.log('Number of accounts:', accounts.length);
+    console.log('Account addresses:', accounts.map(acc => acc.toString()));
+    
     if (transaction.transaction.message.instructions) {
       // Legacy format
       for (let i = 0; i < transaction.transaction.message.instructions.length; i++) {
@@ -278,11 +284,17 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
         
         if (inst.programId) {
           programId = inst.programId.toString();
+          console.log(`Legacy instruction ${i}: Direct programId = ${programId}`);
         } else if (inst.programIdIndex !== undefined) {
           programId = accounts[inst.programIdIndex].toString();
+          console.log(`Legacy instruction ${i}: programIdIndex ${inst.programIdIndex} = ${programId}`);
         } else {
+          console.log(`Legacy instruction ${i}: No programId found`);
           continue;
         }
+        
+        console.log(`Legacy instruction ${i}: Checking if ${programId} === 11111111111111111111111111111112`);
+        console.log(`Legacy instruction ${i}: Match result:`, programId === '11111111111111111111111111111112');
         
         if (programId === '11111111111111111111111111111112') {
           transferInstruction = inst;
@@ -300,6 +312,9 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
         }
         
         const programId = accounts[inst.programIdIndex].toString();
+        console.log(`Compiled instruction ${i}: programIdIndex ${inst.programIdIndex} = ${programId}`);
+        console.log(`Compiled instruction ${i}: Checking if ${programId} === 11111111111111111111111111111112`);
+        console.log(`Compiled instruction ${i}: Match result:`, programId === '11111111111111111111111111111112');
         
         if (programId === '11111111111111111111111111111112') {
           transferInstruction = inst;
@@ -307,10 +322,13 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
           break;
         }
       }
+    } else {
+      console.log('No instructions or compiledInstructions found in transaction');
     }
     
     if (!transferInstruction) {
       console.log('No system program transfer instruction found');
+      console.log('This might be a different type of transaction or use a different instruction format');
       return false;
     }
     
@@ -320,17 +338,28 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
     let sender, receiver;
     if (transferInstruction.accounts) {
       // Legacy format
+      console.log('Using legacy format accounts:', transferInstruction.accounts);
       sender = accounts[transferInstruction.accounts[0]];
       receiver = accounts[transferInstruction.accounts[1]];
     } else if (transferInstruction.accountKeyIndexes) {
       // Versioned format
+      console.log('Using versioned format accountKeyIndexes:', transferInstruction.accountKeyIndexes);
       sender = accounts[transferInstruction.accountKeyIndexes[0]];
       receiver = accounts[transferInstruction.accountKeyIndexes[1]];
+    } else if (Array.isArray(transferInstruction.accounts)) {
+      // Handle array of account indices directly
+      console.log('Using direct account array:', transferInstruction.accounts);
+      sender = accounts[transferInstruction.accounts[0]];
+      receiver = accounts[transferInstruction.accounts[1]];
     } else {
       console.log('Cannot determine sender/receiver accounts');
+      console.log('Instruction properties:', Object.keys(transferInstruction));
+      console.log('Instruction accounts property:', transferInstruction.accounts);
+      console.log('Instruction accountKeyIndexes property:', transferInstruction.accountKeyIndexes);
       return false;
     }
 
+    console.log('=== ACCOUNT VERIFICATION ===');
     console.log('Transaction sender:', sender.toString());
     console.log('Expected sender:', senderPublicKey);
     console.log('Transaction receiver:', receiver.toString());
@@ -346,6 +375,7 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
       return false;
     }
 
+    console.log('=== AMOUNT VERIFICATION ===');
     // Verify amount
     const preBalance = transaction.meta.preBalances[1];
     const postBalance = transaction.meta.postBalances[1];
