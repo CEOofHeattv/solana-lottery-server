@@ -203,25 +203,61 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
       return false;
     }
 
-    // Get the instruction
-    const instruction = transaction.transaction.message.instructions[0];
-    if (!instruction) {
-      console.log('No instruction found');
+    // Handle different transaction message formats
+    let accounts, instruction;
+    
+    if (transaction.transaction.message.accountKeys) {
+      // Legacy format
+      accounts = transaction.transaction.message.accountKeys;
+      instruction = transaction.transaction.message.instructions[0];
+    } else if (transaction.transaction.message.staticAccountKeys) {
+      // Versioned transaction format
+      accounts = transaction.transaction.message.staticAccountKeys;
+      instruction = transaction.transaction.message.compiledInstructions[0];
+    } else {
+      console.log('Unknown transaction format');
       return false;
     }
 
-    const accounts = transaction.transaction.message.accountKeys;
+    if (!instruction || !accounts || accounts.length === 0) {
+      console.log('No instruction or accounts found');
+      console.log('Instruction:', !!instruction);
+      console.log('Accounts length:', accounts ? accounts.length : 0);
+      return false;
+    }
+
+    // Get program ID - handle both formats
+    let programId;
+    if (instruction.programId) {
+      programId = instruction.programId.toString();
+    } else if (instruction.programIdIndex !== undefined) {
+      programId = accounts[instruction.programIdIndex].toString();
+    } else {
+      console.log('Cannot determine program ID');
+      return false;
+    }
     
     // Verify it's a system program transfer
     const systemProgramId = '11111111111111111111111111111112';
-    if (instruction.programId.toString() !== systemProgramId) {
-      console.log('Not a system program transfer');
+    if (programId !== systemProgramId) {
+      console.log('Not a system program transfer, program ID:', programId);
       return false;
     }
 
-    // Verify sender and receiver
-    const sender = accounts[instruction.accounts[0]];
-    const receiver = accounts[instruction.accounts[1]];
+    // Get sender and receiver accounts - handle both formats
+    let sender, receiver;
+    if (instruction.accounts) {
+      // Legacy format
+      sender = accounts[instruction.accounts[0]];
+      receiver = accounts[instruction.accounts[1]];
+    } else if (instruction.accountKeyIndexes) {
+      // Versioned format
+      sender = accounts[instruction.accountKeyIndexes[0]];
+      receiver = accounts[instruction.accountKeyIndexes[1]];
+    } else {
+      console.log('Cannot determine sender/receiver accounts');
+      return false;
+    }
 
     console.log('Transaction sender:', sender.toString());
     console.log('Expected sender:', senderPublicKey);
