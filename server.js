@@ -5,7 +5,7 @@ const fs = require('fs');
 const cors = require('cors');
 
 // Create HTTP server for serving static files
-const server = http.createServer(cors(), (req, res) => {
+const server = http.createServer((req, res) => {
   // Add CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -225,6 +225,50 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
       console.log('Accounts length:', accounts ? accounts.length : 0);
       return false;
     }
+
+    // Handle multiple instructions - look for the transfer instruction
+    let transferInstruction = null;
+    let transferInstructionIndex = -1;
+    
+    if (transaction.transaction.message.instructions) {
+      // Legacy format - check all instructions
+      for (let i = 0; i < transaction.transaction.message.instructions.length; i++) {
+        const inst = transaction.transaction.message.instructions[i];
+        let programId;
+        
+        if (inst.programId) {
+          programId = inst.programId.toString();
+        } else if (inst.programIdIndex !== undefined) {
+          programId = accounts[inst.programIdIndex].toString();
+        }
+        
+        if (programId === '11111111111111111111111111111112') {
+          transferInstruction = inst;
+          transferInstructionIndex = i;
+          break;
+        }
+      }
+    } else if (transaction.transaction.message.compiledInstructions) {
+      // Versioned format - check all compiled instructions
+      for (let i = 0; i < transaction.transaction.message.compiledInstructions.length; i++) {
+        const inst = transaction.transaction.message.compiledInstructions[i];
+        const programId = accounts[inst.programIdIndex].toString();
+        
+        if (programId === '11111111111111111111111111111112') {
+          transferInstruction = inst;
+          transferInstructionIndex = i;
+          break;
+        }
+      }
+    }
+    
+    if (!transferInstruction) {
+      console.log('No system program transfer instruction found');
+      return false;
+    }
+    
+    console.log('Found transfer instruction at index:', transferInstructionIndex);
+    instruction = transferInstruction;
 
     // Get program ID - handle both formats
     let programId;
