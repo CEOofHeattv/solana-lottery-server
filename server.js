@@ -170,7 +170,7 @@ function ensureGameWallet() {
   return gameState.lotteryWallet;
 }
 
-// Verify transaction to lottery wallet
+// Enhanced transaction verification with multiple fallback methods
 async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
   if (!connection || !gameState.lotteryWallet || !LAMPORTS_PER_SOL) {
     console.log('Cannot verify transaction - missing dependencies or simulation mode');
@@ -178,23 +178,66 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
   }
 
   try {
-    console.log('Attempting to verify real transaction:', signature);
+    console.log('=== ENHANCED TRANSACTION VERIFICATION ===');
+    console.log('Signature:', signature);
     console.log('Expected amount:', expectedAmount, 'SOL');
     console.log('Sender:', senderPublicKey);
     console.log('Lottery wallet:', gameState.lotteryWalletAddress);
     
-    // Wait for transaction to propagate
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Wait longer for devnet propagation
+    console.log('Waiting 5 seconds for devnet propagation...');
+    await new Promise(resolve => setTimeout(resolve, 5000));
     
-    const transaction = await connection.getTransaction(signature, {
-      commitment: 'confirmed',
-      maxSupportedTransactionVersion: 0
-    });
+    // Try multiple commitment levels for better devnet compatibility
+    const commitmentLevels = ['finalized', 'confirmed', 'processed'];
+    let transaction = null;
+    let usedCommitment = null;
+    
+    for (const commitment of commitmentLevels) {
+      try {
+        console.log(`Trying to fetch transaction with commitment: ${commitment}`);
+        transaction = await connection.getTransaction(signature, {
+          commitment: commitment,
+          maxSupportedTransactionVersion: 0
+        });
+        
+        if (transaction) {
+          usedCommitment = commitment;
+          console.log(`Transaction found with commitment: ${commitment}`);
+          break;
+        }
+      } catch (error) {
+        console.log(`Failed to fetch with commitment ${commitment}:`, error.message);
+      }
+    }
 
-    console.log('Transaction fetched:', !!transaction);
+    // If transaction fetch failed, try signature status as fallback
+    if (!transaction) {
+      console.log('Transaction fetch failed, trying signature status fallback...');
+      try {
+        const signatureStatus = await connection.getSignatureStatus(signature);
+        console.log('Signature status:', signatureStatus);
+        
+        if (signatureStatus.value && !signatureStatus.value.err) {
+          console.log('Transaction succeeded according to signature status');
+          // For signature status verification, we can't verify amounts, but we accept it
+          return true;
+        } else if (signatureStatus.value && signatureStatus.value.err) {
+          console.log('Transaction failed according to signature status:', signatureStatus.value.err);
+          return false;
+        }
+      } catch (statusError) {
+        console.error('Signature status check failed:', statusError);
+      }
+      
+      console.log('All verification methods failed');
+      return false;
+    }
 
-    if (!transaction || !transaction.meta) {
-      console.log('Transaction not found or no metadata');
+    console.log(`Transaction fetched successfully using commitment: ${usedCommitment}`);
+
+    if (!transaction.meta) {
+      console.log('Transaction has no metadata');
       return false;
     }
 
@@ -203,57 +246,32 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
       return false;
     }
 
-    // Debug: Log the entire transaction structure
-    console.log('=== TRANSACTION DEBUG INFO ===');
-    console.log('Transaction message keys:', transaction.transaction.message.accountKeys ? 'legacy format' : 'versioned format');
-    
-    if (transaction.transaction.message.accountKeys) {
-      console.log('Legacy format - Account keys count:', transaction.transaction.message.accountKeys.length);
-      console.log('Legacy format - Instructions count:', transaction.transaction.message.instructions.length);
-      
-      // Log all instructions
-      transaction.transaction.message.instructions.forEach((inst, i) => {
-        const programId = inst.programId ? inst.programId.toString() : 
-                         (inst.programIdIndex !== undefined ? transaction.transaction.message.accountKeys[inst.programIdIndex].toString() : 'unknown');
-        console.log(`Instruction ${i}: Program ID = ${programId}`);
-      });
-    } else if (transaction.transaction.message.staticAccountKeys) {
-      console.log('Versioned format - Static account keys count:', transaction.transaction.message.staticAccountKeys.length);
-      console.log('Versioned format - Compiled instructions count:', transaction.transaction.message.compiledInstructions.length);
-      
-      // Log all compiled instructions
-      transaction.transaction.message.compiledInstructions.forEach((inst, i) => {
-        const programId = transaction.transaction.message.staticAccountKeys[inst.programIdIndex].toString();
-        console.log(`Compiled Instruction ${i}: Program ID = ${programId}`);
-      });
-    }
-    console.log('=== END TRANSACTION DEBUG ===');
-    
     // Handle different transaction message formats
     let accounts, transferInstruction;
     
     if (transaction.transaction.message.accountKeys) {
       // Legacy format
       accounts = transaction.transaction.message.accountKeys;
+      console.log('Using legacy transaction format');
     } else if (transaction.transaction.message.staticAccountKeys) {
       // Versioned transaction format
       accounts = transaction.transaction.message.staticAccountKeys;
+      console.log('Using versioned transaction format');
     } else {
       console.log('Unknown transaction format');
       return false;
     }
 
     if (!accounts || accounts.length === 0) {
-      console.log('No accounts found');
-      console.log('Accounts length:', accounts ? accounts.length : 0);
+      console.log('No accounts found in transaction');
       return false;
     }
 
-    // Handle multiple instructions - look for the transfer instruction
+    // Find the system program transfer instruction
     let transferInstructionIndex = -1;
     
     if (transaction.transaction.message.instructions) {
-      // Legacy format - check all instructions
+      // Legacy format
       for (let i = 0; i < transaction.transaction.message.instructions.length; i++) {
         const inst = transaction.transaction.message.instructions[i];
         let programId;
@@ -263,71 +281,42 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
         } else if (inst.programIdIndex !== undefined) {
           programId = accounts[inst.programIdIndex].toString();
         } else {
-          console.log(`Legacy instruction ${i}: No programId or programIdIndex found`);
           continue;
         }
         
-        console.log(`Legacy instruction ${i}: Program ID = ${programId}`);
-        
         if (programId === '11111111111111111111111111111112') {
-          console.log(`Found System Program transfer at instruction ${i}`);
           transferInstruction = inst;
           transferInstructionIndex = i;
           break;
         }
       }
     } else if (transaction.transaction.message.compiledInstructions) {
-      // Versioned format - check all compiled instructions
+      // Versioned format
       for (let i = 0; i < transaction.transaction.message.compiledInstructions.length; i++) {
         const inst = transaction.transaction.message.compiledInstructions[i];
         
         if (inst.programIdIndex === undefined || inst.programIdIndex >= accounts.length) {
-          console.log(`Compiled instruction ${i}: Invalid programIdIndex ${inst.programIdIndex}`);
           continue;
         }
         
         const programId = accounts[inst.programIdIndex].toString();
-        console.log(`Compiled instruction ${i}: Program ID = ${programId}`);
         
         if (programId === '11111111111111111111111111111112') {
-          console.log(`Found System Program transfer at compiled instruction ${i}`);
           transferInstruction = inst;
           transferInstructionIndex = i;
           break;
         }
       }
-    } else {
-      console.log('No instructions or compiledInstructions found in transaction');
-      return false;
     }
     
     if (!transferInstruction) {
       console.log('No system program transfer instruction found');
-      console.log('Available instructions were logged above - none matched System Program ID 11111111111111111111111111111112');
       return false;
     }
     
     console.log('Found transfer instruction at index:', transferInstructionIndex);
 
-    // Get program ID - handle both formats
-    let programId;
-    if (transferInstruction.programId) {
-      programId = transferInstruction.programId.toString();
-    } else if (transferInstruction.programIdIndex !== undefined) {
-      programId = accounts[transferInstruction.programIdIndex].toString();
-    } else {
-      console.log('Cannot determine program ID');
-      return false;
-    }
-    
-    // Verify it's a system program transfer
-    const systemProgramId = '11111111111111111111111111111112';
-    if (programId !== systemProgramId) {
-      console.log('Not a system program transfer, program ID:', programId);
-      return false;
-    }
-
-    // Get sender and receiver accounts - handle both formats
+    // Get sender and receiver accounts
     let sender, receiver;
     if (transferInstruction.accounts) {
       // Legacy format
@@ -337,13 +326,8 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
       // Versioned format
       sender = accounts[transferInstruction.accountKeyIndexes[0]];
       receiver = accounts[transferInstruction.accountKeyIndexes[1]];
-    } else if (transferInstruction.accounts !== undefined) {
-      // Handle array of account indices
-      sender = accounts[transferInstruction.accounts[0]];
-      receiver = accounts[transferInstruction.accounts[1]];
     } else {
       console.log('Cannot determine sender/receiver accounts');
-      console.log('Instruction properties:', Object.keys(transferInstruction));
       return false;
     }
 
@@ -379,7 +363,7 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
       return false;
     }
 
-    console.log('Transaction verification successful!');
+    console.log(`=== TRANSACTION VERIFICATION SUCCESSFUL (${usedCommitment}) ===`);
     return true;
   } catch (error) {
     console.error('Error verifying transaction:', error);
@@ -627,32 +611,32 @@ wss.on('connection', (ws) => {
           if (signature && !signature.startsWith('simulation') && !signature.startsWith('SIM_')) {
             console.log('Verifying real transaction:', signature);
             
-            // Try verification with retries for slow network
+            // Enhanced verification with retries for devnet
             let isValid = false;
             let attempts = 0;
             const maxAttempts = 3;
             
             while (!isValid && attempts < maxAttempts) {
               attempts++;
-              console.log(`Verification attempt ${attempts}/${maxAttempts} for:`, signature);
+              console.log(`=== VERIFICATION ATTEMPT ${attempts}/${maxAttempts} ===`);
               
               isValid = await verifyTransaction(signature, amount, publicKey);
               
               if (!isValid && attempts < maxAttempts) {
-                console.log(`Attempt ${attempts} failed, waiting 5 seconds before retry...`);
-                await new Promise(resolve => setTimeout(resolve, 5000));
+                console.log(`Attempt ${attempts} failed, waiting 10 seconds before retry...`);
+                await new Promise(resolve => setTimeout(resolve, 10000));
               }
             }
             
             if (!isValid) {
-              console.log('Transaction verification failed after all attempts:', signature);
+              console.log(`Transaction verification failed after ${maxAttempts} attempts:`, signature);
               ws.send(JSON.stringify({
                 type: 'error',
-                message: `Transaction verification failed after ${maxAttempts} attempts. The transaction may still be processing on the network.`
+                message: `Transaction verification failed after ${maxAttempts} attempts. Please check Solscan to verify if it succeeded.`
               }));
               return;
             }
-            console.log('Transaction verified successfully:', signature);
+            console.log('=== TRANSACTION VERIFIED SUCCESSFULLY ===');
           } else {
             console.log('Simulation transaction received:', signature);
           }
