@@ -73,7 +73,10 @@ let connection = null;
 
 // Initialize Solana connection
 try {
-  connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
+  connection = new Connection(clusterApiUrl('devnet'), {
+    commitment: 'confirmed',
+    confirmTransactionInitialTimeout: 60000
+  });
   console.log('Connected to Solana devnet');
 } catch (error) {
   console.error('Failed to connect to Solana:', error);
@@ -143,18 +146,47 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
   try {
     console.log('Verifying transaction:', signature, 'Amount:', expectedAmount, 'Sender:', senderPublicKey);
     
+    // Wait a bit for transaction to propagate
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
     const transaction = await connection.getTransaction(signature, {
-      commitment: 'confirmed'
+      commitment: 'confirmed',
+      maxSupportedTransactionVersion: 0
     });
 
     console.log('Transaction fetched:', !!transaction);
     
     if (!transaction || !transaction.meta || transaction.meta.err) {
       console.error('Transaction not found, has no meta, or has error');
+      
+      // Try with finalized commitment as fallback
+      try {
+        const finalizedTx = await connection.getTransaction(signature, {
+          commitment: 'finalized',
+          maxSupportedTransactionVersion: 0
+        });
+        
+        if (finalizedTx && finalizedTx.meta && !finalizedTx.meta.err) {
+          console.log('Found transaction with finalized commitment');
+          return await this.verifyTransactionDetails(finalizedTx, expectedAmount, senderPublicKey);
+        }
+      } catch (finalizedError) {
+        console.error('Finalized transaction fetch failed:', finalizedError);
+      }
+      
       return false;
     }
 
-    // Simplified verification - check balance changes instead of instruction details
+    return await this.verifyTransactionDetails(transaction, expectedAmount, senderPublicKey);
+  } catch (error) {
+    console.error('Error verifying transaction:', error);
+    return false;
+  }
+}
+
+// Helper function to verify transaction details
+async function verifyTransactionDetails(transaction, expectedAmount, senderPublicKey) {
+  try {
     const accounts = transaction.transaction.message.accountKeys;
     
     if (!accounts || accounts.length === 0) {
@@ -212,7 +244,7 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
       console.log('Sender balance change:', senderBalanceChange, 'lamports (should be negative)');
     }
     
-    const tolerance = 0.001;
+    const tolerance = 0.002; // Increased tolerance for transaction fees
     if (Math.abs(transferredSOL - expectedAmount) > tolerance) {
       console.error(`Amount mismatch: expected ${expectedAmount}, got ${transferredSOL}`);
       return false;
@@ -221,7 +253,7 @@ async function verifyTransaction(signature, expectedAmount, senderPublicKey) {
     console.log('Transaction verification successful');
     return true;
   } catch (error) {
-    console.error('Error verifying transaction:', error);
+    console.error('Error verifying transaction details:', error);
     return false;
   }
 }
@@ -487,11 +519,13 @@ wss.on('connection', (ws) => {
               console.log('Simulation transaction received:', signature);
             } else {
               // In production, verify the transaction
+              console.log('Attempting to verify real transaction:', signature);
               const isValid = await verifyTransaction(signature, amount, publicKey);
               if (!isValid) {
+                console.error('Transaction verification failed for:', signature);
                 ws.send(JSON.stringify({
                   type: 'error',
-                  message: 'Transaction verification failed. Please try again.'
+                  message: 'Transaction verification failed. Please wait a moment and try again, or check if the transaction was successful on Solscan.'
                 }));
                 return;
               }
